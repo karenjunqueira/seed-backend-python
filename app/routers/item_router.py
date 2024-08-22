@@ -7,9 +7,6 @@ from services.item_service import ItemService
 router = APIRouter()
 service = ItemService()
 
-list_items = {}
-
-
 @router.get("")    
 def get_all():    
     search = service.get_all()
