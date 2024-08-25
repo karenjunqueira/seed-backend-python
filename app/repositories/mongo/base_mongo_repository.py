@@ -26,8 +26,16 @@ class BaseMongoRepository(Generic[T]):
         cursor = self._collection.find({})
         data = []
         for doc in cursor:
-            doc['_id'] = str(doc['_id']) # validate later if there is a better solution
-            data.append(doc)
+            doc['_id'] = str(doc['_id']) # TODO: validate later if there is a better solution
+            data.append(self._model(**doc))
+        return data
+    
+    def get_by_attribute(self, list_filters) -> List[Optional[T]]:
+        cursor = self._collection.find({ "$or": list_filters })
+        data = []
+        for doc in cursor:
+            doc['_id'] = str(doc['_id']) # TODO: validate later if there is a better solution
+            data.append(self._model(**doc))
         return data
 
     def update(self, id: str, document: T) -> Optional[T]:
