@@ -8,7 +8,6 @@ from core.security import (
 )
 from models.user import User
 from schemas.token import Token
-from schemas.user_public import UserPublic
 from services.user_service import UserService
 
 router = APIRouter(prefix='/auth', tags=['auth'])
@@ -19,7 +18,7 @@ service = UserService()
 def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends()
 ):
-    user_public = UserPublic(email=form_data.username)
+    user_public = User(email=form_data.username)
     users_list = service.get_by_attributes(user_public)
 
     if len(users_list) == 0:
