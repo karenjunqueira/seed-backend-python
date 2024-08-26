@@ -5,8 +5,8 @@ from fastapi.security import OAuth2PasswordBearer
 from jwt import DecodeError, decode, encode
 from zoneinfo import ZoneInfo
 from models.user import User
+from schemas.user_response import UserResponse
 from utils.password_util import PasswordUtil
-from schemas.user_public import UserPublic
 from services.user_service import UserService
 
 SECRET_KEY = 'your-secret-key'
@@ -50,7 +50,7 @@ def get_current_user(
     except DecodeError:
         raise credentials_exception
 
-    user_public = User(email=username)
+    user_public = UserResponse(email=username)
     users_list = userService.get_by_attributes(user_public)
 
     if len(users_list) == 0:
