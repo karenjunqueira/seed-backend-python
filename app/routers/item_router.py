@@ -4,7 +4,7 @@ from fastapi.exceptions import HTTPException
 from models.item import Item
 from services.item_service import ItemService
 
-router = APIRouter()
+router = APIRouter(prefix="/items", tags=["Item"])
 service = ItemService()
 
 @router.get("")    

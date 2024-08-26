@@ -1,6 +1,6 @@
 # README
 
-This project is a simple API built using FastAPI, with MongoDB as the database. It includes basic CRUD (Create, Read, Update, Delete) operations for an item model with `id` and `name` fields. The project is set up to run on Windows Subsystem for Linux (WSL) and uses Poetry for dependency management. A Makefile is included to simplify common tasks.
+This project is a simple API built using FastAPI, with MongoDB as the database and JWT for authentication and authorization. It includes basic CRUD (Create, Read, Update, Delete) operations for an item model with `id` and `name` fields, as well as user authentication to protect certain endpoints. The project is set up to run on Windows Subsystem for Linux (WSL) and uses Poetry for dependency management. A Makefile is included to simplify common tasks.
 
 ## Prerequisites
 
@@ -30,32 +30,53 @@ your-project-name/
 │
 ├── app/
 │   ├── core/
-│   │   └── mongo_client.py   # MongoDB client using the Singleton pattern
-│   ├── main.py               # The main FastAPI application file
+│   │   ├── mongo_client.py        # MongoDB client using the Singleton pattern
+│   │   └── security.py            # Security utilities for JWT
+│   ├── main.py                    # The main FastAPI application file
 │   ├── routers/
-│   │   ├── items.py          # The router for item-related endpoints
+│   │   ├── items.py               # The router for item-related endpoints
+│   │   ├── users.py               # The router for user-related endpoints (authentication, registration)
 │   ├── models/
-│   │   ├── __init__.py       # Makes 'models' a module
-│   │   ├── item.py           # The item model definition
+│   │   ├── item.py                # The item model definition
+│   │   ├── user.py                # The user model definition
 │   ├── repositories/
 │   │   ├── mongo/
 │   │   │   ├── base_mongo_repository.py  # Base repository with MongoDB operations
 │   │   ├── item_mongo_repository.py  # Repository for Item model
+│   │   └── user_mongo_repository.py  # Repository for User model
+│   ├── services/
+│   │   ├── user_service.py        # Business logic for user operations
+│   └── utils/
+│       └── password.py            # Password utilities for hashing and validation
 │
-├── Makefile                  # Makefile for easy commands
-├── pyproject.toml            # Poetry configuration file
-└── README.md                 # Project documentation
+├── Makefile                       # Makefile for easy commands
+├── pyproject.toml                 # Poetry configuration file
+└── README.md                      # Project documentation
 ```
-
-### Separating Routers
-
-The routers for different API endpoints are separated into their own modules within the `routers` folder. This separation allows you to organize your code more effectively as your project grows.
-
-For example, the `item_router.py` file in the `routers` folder contains all the endpoints related to the `Item` model.
 
 ### MongoDB Integration
 
 This project uses MongoDB as the database, running inside a Docker container. The database operations are handled by repository classes to abstract database logic from the rest of the application.
+
+### JWT Authentication
+
+#### Objective
+
+- Understand JWT (JSON Web Tokens) basics.
+- Implement user authentication with JWT.
+- Add authorization logic to the update and delete endpoints.
+- Use the `pwdlib` library to encrypt user passwords.
+
+#### New User Data Type
+
+A new data type, `User`, is introduced with the following attributes:
+
+- `_id`
+- `name`
+- `email` (using `pydantic[email]` for email type validation)
+- `password`
+
+The user data type includes models, repositories, services, and routers to handle user-related operations.
 
 ### 1. Setting Up MongoDB with Docker
 
@@ -71,52 +92,76 @@ This will start a MongoDB instance accessible at `mongodb://localhost:27017`.
 
 The MongoDB client is implemented using the Singleton pattern to ensure that only one instance of the client is created. The client is located in `app/core/mongo_client.py`.
 
-Example code:
-
-```python
-from pymongo import MongoClient
-
-class MongoClientSingleton:
-    _client = None
-
-    @classmethod
-    def get_client(cls):
-        if cls._client is None:
-            cls._client = MongoClient("mongodb://localhost:27017")
-        return cls._client
-
-mongo_client = MongoClientSingleton.get_client()
-```
-
 ### 3. Repository Pattern
 
 The repository pattern is used to handle database operations in a clean and organized manner.
 
 - **Base Mongo Repository:** `app/repositories/mongo/base_mongo_repository.py` contains the basic CRUD operations implemented for MongoDB.
+- **Item Repository:** `app/repositories/item_mongo_repository.py` implements item-specific operations.
+- **User Repository:** `app/repositories/user_mongo_repository.py` implements user-specific operations.
 
+### 4. Security Utilities
 
-- **Item Repository:** `app/repositories/item_mongo_repository.py` implements the item-specific operations.
+`app/core/security.py` handles JWT token creation and user authentication. It includes functions for generating tokens and verifying user credentials during login.
 
-
-### 4. Referencing Routers in `main.py`
-
-To use the routers in the main application, you'll need to import them in the `main.py` file and include them in the FastAPI app. Here’s an example:
+#### Example Code for JWT Token Creation:
 
 ```python
-from fastapi import FastAPI
-from routers.item_router import router as item_router
+from datetime import datetime, timedelta
+import jwt
 
-app = FastAPI()
+SECRET_KEY = "your_secret_key"
+ALGORITHM = "HS256"
 
-# Include the items router
-app.include_router(item_router, 
-    prefix="/items",
-    tags=["Item"])
-
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
 ```
-This setup ensures that all the routes defined in `item_router.py` are registered with the FastAPI application.
 
-### 5. Using MongoDB Compass
+### 5. Password Utilities
+
+`app/utils/password.py` includes functions for hashing and validating passwords using `pwdlib`.
+
+Example functions:
+
+```python
+from pwdlib import argon2
+
+def hash_password(password: str) -> str:
+    return argon2.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return argon2.verify(plain_password, hashed_password)
+```
+
+### 6. Protecting Routes with JWT
+
+Certain endpoints, such as user update and delete operations, require JWT authentication. Users can only edit their own records, and not those of others.
+
+#### Example Protected Route:
+
+In `app/routers/users.py`:
+
+```python
+from fastapi import APIRouter, Depends, HTTPException
+from app.core.security import get_current_user
+
+router = APIRouter()
+
+@router.put("/users/{user_id}")
+async def update_user(user_id: str, user: UserUpdate, current_user: User = Depends(get_current_user)):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to update this user")
+    # Logic to update the user
+```
+
+### 7. Using MongoDB Compass
 
 To view and manage the data saved in MongoDB, you can use MongoDB Compass, a GUI for MongoDB. Follow these steps:
 
@@ -162,8 +207,10 @@ Once the server is running, you can interact with the API using HTTP methods lik
 - **GET /items:** Retrieve a list of items.
 - **GET /items/{id}:** Retrieve the item with the specified `id`.
 - **POST /items:** Create a new item by providing an `id` and `name`.
-- **PUT /items/{id}:** Update the item with the specified `id`.
+- **PUT /items/{id}:** Update the item with the specified `id` (requires authentication).
 - **DELETE /items/{id}:** Delete the item with the specified `id`.
+- **POST /users:** Create a new user with `name`, `email`, and `password`.
+- **POST /auth/token:** Authenticate a user and receive a JWT token.
 
 
 ## Makefile
